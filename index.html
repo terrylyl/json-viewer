@@ -1,0 +1,2836 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>JSON Viewer</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4f6f8;
+      --panel: #ffffff;
+      --panel-strong: #eef2f5;
+      --text: #172026;
+      --muted: #66737f;
+      --border: #d8e0e7;
+      --accent: #087f75;
+      --accent-dark: #06665e;
+      --danger: #b42318;
+      --warn: #9a6700;
+      --ok: #157347;
+      --code-bg: #111820;
+      --code-text: #e9eef3;
+      --json-key: #78dce8;
+      --json-string: #ffd479;
+      --json-number: #f78c6c;
+      --json-boolean: #c792ea;
+      --json-null: #f4a261;
+      --json-punctuation: #8f9ba8;
+      --shadow: 0 16px 42px rgba(20, 34, 48, 0.09);
+      --input-width: 34%;
+      --splitter-width: 12px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      height: 100%;
+      margin: 0;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: ui-sans-serif, "Segoe UI", "Microsoft YaHei", sans-serif;
+      letter-spacing: 0;
+    }
+
+    button,
+    textarea {
+      font: inherit;
+    }
+
+    .app {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      height: 100%;
+      min-height: 100%;
+    }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.92);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .title {
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .status {
+      min-width: 62px;
+      padding: 3px 8px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      color: var(--muted);
+      font-size: 12px;
+      text-align: center;
+      white-space: nowrap;
+    }
+
+    .status.ok {
+      border-color: rgba(21, 115, 71, 0.22);
+      color: var(--ok);
+      background: rgba(21, 115, 71, 0.08);
+    }
+
+    .status.warn {
+      border-color: rgba(154, 103, 0, 0.24);
+      color: var(--warn);
+      background: rgba(154, 103, 0, 0.08);
+    }
+
+    .status.error {
+      border-color: rgba(180, 35, 24, 0.22);
+      color: var(--danger);
+      background: rgba(180, 35, 24, 0.08);
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 6px;
+    }
+
+    .btn {
+      min-height: 32px;
+      padding: 6px 10px;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      background: var(--panel);
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    .btn:hover {
+      border-color: #b6c3cf;
+      background: #f9fbfc;
+    }
+
+    .btn.primary {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: #fff;
+      font-weight: 650;
+    }
+
+    .btn.primary:hover {
+      border-color: var(--accent-dark);
+      background: var(--accent-dark);
+    }
+
+    .btn[aria-pressed="true"] {
+      border-color: rgba(8, 127, 117, 0.36);
+      background: rgba(8, 127, 117, 0.1);
+      color: var(--accent-dark);
+      font-weight: 650;
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: minmax(260px, var(--input-width)) var(--splitter-width) minmax(360px, 1fr);
+      gap: 0;
+      min-height: 0;
+      padding: 10px;
+    }
+
+    .splitter {
+      display: flex;
+      align-items: stretch;
+      justify-content: center;
+      min-width: var(--splitter-width);
+      padding: 0;
+      border: 0;
+      background: transparent;
+      cursor: col-resize;
+      touch-action: none;
+    }
+
+    .splitter::before {
+      width: 2px;
+      border-radius: 999px;
+      background: var(--border);
+      content: "";
+      transition: width 120ms ease, background-color 120ms ease;
+    }
+
+    .splitter:hover::before,
+    .splitter:focus-visible::before,
+    .workspace.is-resizing .splitter::before {
+      width: 4px;
+      background: var(--accent);
+    }
+
+    .splitter:focus-visible {
+      outline: 2px solid rgba(8, 127, 117, 0.24);
+      outline-offset: -2px;
+    }
+
+    body.is-resizing {
+      cursor: col-resize;
+      user-select: none;
+    }
+
+    .pane {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      min-width: 0;
+      min-height: 0;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    .pane-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      min-height: 38px;
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--border);
+      background: var(--panel-strong);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .meta {
+      min-width: 0;
+      overflow: hidden;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 500;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .input {
+      width: 100%;
+      min-height: 0;
+      padding: 14px;
+      resize: none;
+      border: 0;
+      outline: none;
+      color: var(--text);
+      background: #fbfcfd;
+      font-family: "Cascadia Mono", "Consolas", "SFMono-Regular", monospace;
+      font-size: 13px;
+      line-height: 1.55;
+      tab-size: 2;
+    }
+
+    .result-body {
+      display: grid;
+      grid-template-rows: minmax(0, 1fr) auto;
+      min-height: 0;
+      background: var(--code-bg);
+    }
+
+    .result-main {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 38px;
+      min-height: 0;
+    }
+
+    .output {
+      min-height: 0;
+      margin: 0;
+      padding: 16px;
+      overflow: auto;
+      color: var(--code-text);
+      font-family: "Cascadia Mono", "Consolas", "SFMono-Regular", monospace;
+      font-size: 13px;
+      line-height: 1.55;
+      white-space: pre;
+      tab-size: 2;
+    }
+
+    .output.tree {
+      white-space: normal;
+    }
+
+    .output.compact {
+      white-space: pre;
+    }
+
+    .output.wrap {
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+
+    .output.compact.wrap {
+      white-space: pre-wrap;
+    }
+
+    .output.preview.wrap {
+      white-space: pre-wrap;
+    }
+
+    .output.tree.wrap .json-tree {
+      min-width: 0;
+    }
+
+    .output.tree.wrap .json-line {
+      white-space: normal;
+    }
+
+    .output.tree.wrap .json-content {
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow-wrap: anywhere;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .output.placeholder {
+      color: #91a0ad;
+    }
+
+    .json-tree {
+      min-width: max-content;
+    }
+
+    .json-node {
+      margin: 0;
+    }
+
+    .json-line {
+      display: flex;
+      align-items: flex-start;
+      min-height: 20px;
+      white-space: pre;
+    }
+
+    .json-gutter {
+      flex: 0 0 auto;
+      white-space: pre;
+    }
+
+    .json-content {
+      flex: 0 0 auto;
+      white-space: pre;
+    }
+
+    .json-toggle,
+    .json-spacer {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 18px;
+      height: 18px;
+      margin: 0 2px 0 0;
+      vertical-align: -2px;
+    }
+
+    .json-toggle {
+      border: 0;
+      border-radius: 4px;
+      background: transparent;
+      color: #aeb8c2;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 12px;
+      line-height: 1;
+    }
+
+    .json-toggle:hover,
+    .json-toggle:focus-visible {
+      background: rgba(255, 255, 255, 0.1);
+      color: #ffffff;
+      outline: none;
+    }
+
+    .json-summary {
+      color: #91a0ad;
+    }
+
+    .md-toggle {
+      display: inline-flex;
+      align-items: center;
+      height: 18px;
+      margin-left: 8px;
+      padding: 0 5px;
+      border: 1px solid rgba(120, 220, 232, 0.32);
+      border-radius: 5px;
+      background: rgba(120, 220, 232, 0.08);
+      color: var(--json-key);
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 11px;
+      line-height: 1;
+    }
+
+    .md-toggle:hover,
+    .md-toggle:focus-visible {
+      border-color: rgba(120, 220, 232, 0.62);
+      background: rgba(120, 220, 232, 0.16);
+      outline: none;
+    }
+
+    .md-preview {
+      max-width: min(860px, calc(100% - 20px));
+      margin: 6px 0 10px var(--md-indent, 24px);
+      padding: 12px 14px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 8px;
+      background: #f8fafc;
+      color: #1f2933;
+      font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+      font-size: 13px;
+      line-height: 1.6;
+      white-space: normal;
+    }
+
+    .md-preview[hidden] {
+      display: none;
+    }
+
+    .md-preview h1,
+    .md-preview h2,
+    .md-preview h3,
+    .md-preview h4,
+    .md-preview h5,
+    .md-preview h6 {
+      margin: 0.4em 0 0.25em;
+      line-height: 1.25;
+    }
+
+    .md-preview p {
+      margin: 0.45em 0;
+    }
+
+    .md-preview ul,
+    .md-preview ol {
+      margin: 0.45em 0;
+      padding-left: 1.5em;
+    }
+
+    .md-preview blockquote {
+      margin: 0.6em 0;
+      padding-left: 0.9em;
+      border-left: 3px solid #b6c3cf;
+      color: #52606d;
+    }
+
+    .md-preview code {
+      padding: 1px 4px;
+      border-radius: 4px;
+      background: #e8eef3;
+      font-family: "Cascadia Mono", "Consolas", "SFMono-Regular", monospace;
+    }
+
+    .md-preview pre {
+      overflow: auto;
+      margin: 0.6em 0;
+      padding: 10px;
+      border-radius: 7px;
+      background: #111820;
+      color: #e9eef3;
+    }
+
+    .md-preview pre code {
+      padding: 0;
+      background: transparent;
+      color: inherit;
+    }
+
+    .md-preview a {
+      color: #087f75;
+    }
+
+    .minimap {
+      min-height: 0;
+      padding: 12px 8px 12px 4px;
+      border-left: 1px solid rgba(255, 255, 255, 0.08);
+      background: #0c1218;
+    }
+
+    .minimap[hidden] {
+      display: none;
+    }
+
+    .minimap-track {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      min-height: 120px;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.04);
+      cursor: pointer;
+      overflow: hidden;
+    }
+
+    .minimap-mark {
+      position: absolute;
+      min-height: 2px;
+      border-radius: 999px;
+      background: rgba(145, 160, 173, 0.42);
+    }
+
+    .minimap-mark.compound {
+      background: rgba(120, 220, 232, 0.55);
+    }
+
+    .minimap-mark.string {
+      background: rgba(255, 212, 121, 0.5);
+    }
+
+    .minimap-mark.scalar {
+      background: rgba(247, 140, 108, 0.48);
+    }
+
+    .minimap-viewport {
+      position: absolute;
+      left: 0;
+      right: 0;
+      min-height: 18px;
+      border: 1px solid rgba(255, 255, 255, 0.42);
+      border-radius: 5px;
+      background: rgba(255, 255, 255, 0.1);
+      pointer-events: none;
+    }
+
+    .json-key {
+      color: var(--json-key);
+    }
+
+    .json-string {
+      color: var(--json-string);
+    }
+
+    .json-number {
+      color: var(--json-number);
+    }
+
+    .json-boolean {
+      color: var(--json-boolean);
+    }
+
+    .json-null {
+      color: var(--json-null);
+    }
+
+    .json-punctuation {
+      color: var(--json-punctuation);
+    }
+
+    .diagnostics {
+      max-height: 32vh;
+      overflow: auto;
+      border-top: 1px solid rgba(255, 255, 255, 0.12);
+      background: #f9fbfc;
+      color: var(--text);
+      font-size: 12px;
+    }
+
+    .diagnostics[hidden] {
+      display: none;
+    }
+
+    .diag-block {
+      padding: 10px 12px;
+      border-top: 1px solid var(--border);
+    }
+
+    .diag-block:first-child {
+      border-top: 0;
+    }
+
+    .diag-title {
+      margin-bottom: 6px;
+      font-weight: 700;
+    }
+
+    summary.diag-title {
+      cursor: pointer;
+      list-style-position: inside;
+    }
+
+    .diag-block:not([open]) > summary.diag-title {
+      margin-bottom: 0;
+    }
+
+    .diag-block:not([open]) > .diag-list {
+      display: none;
+    }
+
+    .diag-title.error {
+      color: var(--danger);
+    }
+
+    .diag-title.warn {
+      color: var(--warn);
+    }
+
+    .diag-title.ok {
+      color: var(--ok);
+    }
+
+    .diag-list {
+      display: grid;
+      gap: 4px;
+      margin: 0;
+      padding-left: 18px;
+    }
+
+    .context {
+      margin: 6px 0 0;
+      padding: 8px;
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      background: #ffffff;
+      color: #29333b;
+      font-family: "Cascadia Mono", "Consolas", "SFMono-Regular", monospace;
+      white-space: pre;
+    }
+
+    @media (max-width: 760px) {
+      .toolbar {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .actions {
+        justify-content: flex-start;
+      }
+
+      .workspace {
+        grid-template-columns: 1fr;
+        grid-template-rows: minmax(190px, 38vh) minmax(300px, 1fr);
+        gap: 10px;
+      }
+
+      .splitter {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="toolbar">
+      <div class="brand">
+        <div class="title">JSON Viewer</div>
+        <div id="status" class="status">待输入</div>
+      </div>
+      <div class="actions" aria-label="操作">
+        <button id="formatBtn" class="btn primary" type="button">格式化</button>
+        <button id="displayModeBtn" class="btn" type="button" aria-pressed="false">格式化</button>
+        <button id="wrapBtn" class="btn" type="button" aria-pressed="false">自动换行</button>
+        <button id="copyBtn" class="btn" type="button">复制</button>
+        <button id="clearBtn" class="btn" type="button">清空</button>
+        <button id="sampleBtn" class="btn" type="button">示例</button>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <section class="pane input-pane" aria-label="输入内容">
+        <div class="pane-head">
+          <span>输入内容</span>
+          <span id="inputMeta" class="meta">0 字符</span>
+        </div>
+        <textarea id="input" class="input" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="粘贴 JSON 或 JSON-like 内容"></textarea>
+      </section>
+
+      <div id="splitter" class="splitter" role="separator" aria-orientation="vertical" aria-label="调整输入和解析结果宽度" tabindex="0"></div>
+
+      <section class="pane result-pane" aria-label="解析结果">
+        <div class="pane-head">
+          <span>解析结果</span>
+          <span id="resultMeta" class="meta">等待输入</span>
+        </div>
+        <div class="result-body">
+          <div class="result-main">
+            <div id="output" class="output placeholder">格式化结果会显示在这里。</div>
+            <div id="minimap" class="minimap" hidden aria-label="结果导航">
+              <div id="minimapTrack" class="minimap-track" role="scrollbar" aria-orientation="vertical" aria-label="结果位置导航" tabindex="0">
+                <div id="minimapMarks"></div>
+                <div id="minimapViewport" class="minimap-viewport"></div>
+              </div>
+            </div>
+          </div>
+          <div id="diagnostics" class="diagnostics" hidden></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    /*!
+     * jsonrepair 3.14.0
+     * https://github.com/josdejong/jsonrepair
+     * ISC License
+     */
+((t,n)=>{"object"==typeof exports&&"undefined"!=typeof module?n(exports):"function"==typeof define&&define.amd?define(["exports"],n):n((t="undefined"!=typeof globalThis?globalThis:t||self).JSONRepair={})})(this,function(t){class x extends Error{constructor(t,n){super(t+" at position "+n),this.position=n}}let r=32,e=10,i=9,f=13,a=160,g=6158,y=8192,O=8203,N=8239,J=8287,S=12288,j=65279;function k(t){return"0"<=t&&t<="9"}function C(t){return",:[]/{}()\n+".includes(t)}function m(t){return"a"<=t&&t<="z"||"A"<=t&&t<="Z"||"_"===t||"$"===t}function z(t){return"a"<=t&&t<="z"||"A"<=t&&t<="Z"||"_"===t||"$"===t||"0"<=t&&t<="9"}let E=/^(http|https|ftp|mailto|file|data|irc):\/\/$/,I=/^[A-Za-z0-9-._~:/?#@!$&'()*+;=]$/;function T(t){return",[]/{}\n+".includes(t)}function Z(t){return R(t)||n.test(t)}let n=/^[[{\w-]$/;function _(t,n){t=t.charCodeAt(n);return t===r||t===e||t===i||t===f}function F(t,n){t=t.charCodeAt(n);return t===r||t===i||t===f}function R(t){return U(t)||B(t)}function U(t){return'"'===t||"“"===t||"”"===t}function q(t){return'"'===t}function B(t){return"'"===t||"‘"===t||"’"===t||"`"===t||"´"===t}function D(t){return"'"===t}function G(t,n,r){r=2<arguments.length&&void 0!==r&&r,n=t.lastIndexOf(n);return-1!==n?t.substring(0,n)+(r?"":t.substring(n+1)):t}function H(t,n){let r=t.length;if(!_(t,r-1))return t+n;for(;_(t,r-1);)r--;return t.substring(0,r)+n+t.substring(r)}let K={"\b":"\\b","\f":"\\f","\n":"\\n","\r":"\\r","\t":"\\t"},L={'"':'"',"\\":"\\","/":"/",b:"\b",f:"\f",n:"\n",r:"\r",t:"\t"};t.JSONRepairError=x,t.jsonrepair=function(h){let d=0,v="";if(n(["```","[```","{```"]),!f())throw new x("Unexpected end of json string",h.length);n(["```","```]","```}"]);var t=u(",");if(t&&b(),Z(h[d])&&/[,\n][ \t\r]*$/.test(v)){t||(v=H(v,","));{let t=!0,n=!0;for(;n;)t?t=!1:u(",")||(v=H(v,",")),n=f();v=`[
+${v=n?v:G(v,",")}
+]`}}else t&&(v=G(v,","));for(;"}"===h[d]||"]"===h[d];)d++,b();if(d>=h.length)return v;throw new x("Unexpected character "+JSON.stringify(h[d]),d);function f(){b();var t=(()=>{if("{"!==h[d])return!1;{v+="{",d++,b(),p(",")&&b();let n=!0;for(;d<h.length&&"}"!==h[d];){let t;if(n?(t=!0,n=!1):((t=u(","))||(v=H(v,",")),b()),o(),!(w()||l(!0))){"}"===h[d]||"{"===h[d]||"]"===h[d]||"["===h[d]||void 0===h[d]?v=G(v,","):(()=>{throw new x("Object key expected",d)})();break}b();var r=u(":"),e=d>=h.length,i=(r||(Z(h[d])||e?v=H(v,":"):c()),f());i||(r||e?v+="null":c())}return"}"===h[d]?(v+="}",d++):v=H(v,"}"),!0}})()||(()=>{if("["!==h[d])return!1;{v+="[",d++,b(),p(",")&&b();let t=!0;for(;d<h.length&&"]"!==h[d];){t?t=!1:u(",")||(v=H(v,",")),o();var n=f();if(!n){v=G(v,",");break}}return"]"===h[d]?(v+="]",d++):v=H(v,"]"),!0}})()||w()||(()=>{var t,n,r=d;if("-"===h[d]){if(d++,i())return s(r),!0;if(!k(h[d]))return d=r,!1}for(;k(h[d]);)d++;if("."===h[d]){if(d++,i())return s(r),!0;if(!k(h[d]))return d=r,!1;for(;k(h[d]);)d++}if("e"===h[d]||"E"===h[d]){if(d++,"-"!==h[d]&&"+"!==h[d]||d++,i())return s(r),!0;if(!k(h[d]))return d=r,!1;for(;k(h[d]);)d++}if(i()){if(d>r)return t=h.slice(r,d),n=/^0\d/.test(t),v+=n?`"${t}"`:t,!0}else d=r;return!1})()||r("true","true")||r("false","false")||r("null","null")||r("True","true")||r("False","false")||r("None","null")||l(!1)||(()=>{if("/"===h[d]){var t=d;for(d++;d<h.length&&("/"!==h[d]||"\\"===h[d-1]);)d++;return d++,v+=JSON.stringify(h.substring(t,d)),!0}})();return b(),t}function b(t){var n=!(0<arguments.length&&void 0!==t)||t;d;let r=e(n);for(;r=(r=(()=>{if("/"===h[d]&&"*"===h[d+1]){for(;d<h.length&&!((t,n)=>"*"===t[n]&&"/"===t[n+1])(h,d);)d++;d+=2}else{if("/"!==h[d]||"/"!==h[d+1])return!1;for(;d<h.length&&"\n"!==h[d];)d++}return!0})())&&e(n););d}function e(t){var n,r,e=t?_:F;let i="";for(;;){if(e(h,d))i+=h[d];else{if(n=h,r=d,!((n=n.charCodeAt(r))===a||n===g||n>=y&&n<=O||n===N||n===J||n===S||n===j))break;i+=" "}d++}return 0<i.length&&(v+=i,!0)}function n(t){if((t=>{e(!0);for(var n of t){var r=d+n.length;if(h.slice(d,r)===n)return d=r,1}})(t)){if(m(h[d]))for(;d<h.length&&z(h[d]);)d++;b()}}function u(t){return h[d]===t&&(v+=h[d],d++,!0)}function p(t){return h[d]===t&&(d++,!0)}function o(){b(),"."===h[d]&&"."===h[d+1]&&"."===h[d+2]&&(d+=3,b(),p(","))}function w(t,n){var r=0<arguments.length&&void 0!==t&&t,e=1<arguments.length&&void 0!==n?n:-1;let i="\\"===h[d];if(i&&(d++,i=!0),R(h[d])){var f=q(h[d])?q:D(h[d])?D:B(h[d])?B:U,u=d,o=v.length;let n='"';for(d++;;){if(d>=h.length)return l=$(d-1),!r&&C(h.charAt(l))?(d=u,v=v.substring(0,o),w(!0)):(n=H(n,'"'),v+=n,!0);if(d===e)return n=H(n,'"'),v+=n,!0;if(f(h[d])){var l=d,s=n.length;if(n+='"',d++,v+=n,b(!1),r||d>=h.length||C(h[d])||R(h[d])||k(h[d]))return A(),!0;var c=$(l-1),a=h.charAt(c);if(","===a)return d=u,v=v.substring(0,o),w(!1,c);if(C(a))return d=u,v=v.substring(0,o),w(!0);v=v.substring(0,o),d=l+1,n=n.substring(0,s)+"\\"+n.substring(s)}else{if(r&&T(h[d])){if(":"===h[d-1]&&E.test(h.substring(u+1,d+2)))for(;d<h.length&&I.test(h[d]);)n+=h[d],d++;return n=H(n,'"'),v+=n,A(),!0}if("\\"===h[d]){c=h.charAt(d+1);if(void 0!==L[c])n+=h.slice(d,d+2),d+=2;else if("u"===c){let t=2;for(;t<6&&/^[0-9A-Fa-f]$/.test(h[d+t]);)t++;if(6===t)n+=h.slice(d,d+6),d+=6;else{if(!(d+t>=h.length))throw a=void 0,a=h.slice(d,d+6),new x(`Invalid unicode character "${a}"`,d);d=h.length}}else n+="\n"===c?"\\n":c,d+=2}else{var g,s=h.charAt(d);if('"'===s&&"\\"!==h[d-1])n+="\\"+s;else if("\n"===(g=s)||"\r"===g||"\t"===g||"\b"===g||"\f"===g)n+=K[s];else{if(!(" "<=s))throw g=void 0,g=s,new x("Invalid character "+JSON.stringify(g),d);n+=s}d++}}i&&p("\\")}}return!1}function A(){let t=!1;for(b();"+"===h[d];){t=!0,d++,b();var n=(v=G(v,'"',!0)).length,r=w();v=r?(r=v,n=n,e=1,r.substring(0,n)+r.substring(n+e)):H(v,'"')}var e;t}function r(t,n){return h.slice(d,d+t.length)===t&&(v+=n,d+=t.length,!0)}function l(t){var n=d;if(m(h[d])){for(;d<h.length&&z(h[d]);)d++;let t=d;for(;_(h,t);)t++;if("("===h[t])return d=t+1,f(),")"===h[d]&&(d++,";"===h[d])&&d++,!0}for(;d<h.length&&!T(h[d])&&!R(h[d])&&(!t||":"!==h[d]);)d++;if(":"===h[d-1]&&E.test(h.substring(n,d+2)))for(;d<h.length&&I.test(h[d]);)d++;if(d>n){for(;_(h,d-1)&&0<d;)d--;n=h.slice(n,d);return v+="undefined"===n?"null":JSON.stringify(n),'"'===h[d]&&d++,!0}}function $(t){let n=t;for(;0<n&&_(h,n);)n--;return n}function i(){return d>=h.length||C(h[d])||_(h,d)}function s(t){v+=h.slice(t,d)+"0"}function c(){throw new x("Colon expected",d)}}});
+  </script>
+  <script>
+    (() => {
+      "use strict";
+
+      const elements = {
+        workspace: document.querySelector(".workspace"),
+        inputPane: document.querySelector(".input-pane"),
+        resultPane: document.querySelector(".result-pane"),
+        splitter: document.getElementById("splitter"),
+        input: document.getElementById("input"),
+        output: document.getElementById("output"),
+        minimap: document.getElementById("minimap"),
+        minimapTrack: document.getElementById("minimapTrack"),
+        minimapMarks: document.getElementById("minimapMarks"),
+        minimapViewport: document.getElementById("minimapViewport"),
+        diagnostics: document.getElementById("diagnostics"),
+        status: document.getElementById("status"),
+        inputMeta: document.getElementById("inputMeta"),
+        resultMeta: document.getElementById("resultMeta"),
+        formatBtn: document.getElementById("formatBtn"),
+        displayModeBtn: document.getElementById("displayModeBtn"),
+        wrapBtn: document.getElementById("wrapBtn"),
+        copyBtn: document.getElementById("copyBtn"),
+        clearBtn: document.getElementById("clearBtn"),
+        sampleBtn: document.getElementById("sampleBtn")
+      };
+
+      const samples = [
+        "{\"user\":{\"id\":42,\"name\":\"Lin\",\"roles\":[\"admin\",\"editor\"],\"active\":true},\"items\":[1,2,3]}",
+        "```json\n// API 返回片段\n{ id: 7, name: 'Ada', active: True, note: None, list: [1, 2, 3,], }\n```",
+        "{\"request\":{\"id\":\"abc-1\",\"payload\":{\"tags\":[\"json\",\"viewer\"],\"memo\":\"内容被截断"
+      ];
+
+      let sampleIndex = 0;
+      let currentOutput = "";
+      let currentCompactOutput = "";
+      let displayMode = "pretty";
+      let wordWrap = false;
+      let minimapUpdateFrame = 0;
+
+      function setStatus(text, type) {
+        elements.status.textContent = text;
+        elements.status.className = "status" + (type ? " " + type : "");
+      }
+
+      function updateInputMeta() {
+        const count = elements.input.value.length;
+        elements.inputMeta.textContent = count + " 字符";
+      }
+
+      function tryParse(text) {
+        try {
+          return { ok: true, value: JSON.parse(text) };
+        } catch (error) {
+          return { ok: false, error };
+        }
+      }
+
+      function parseContent(raw) {
+        const input = String(raw ?? "");
+        if (!input.trim()) {
+          return {
+            ok: false,
+            empty: true,
+            output: "格式化结果会显示在这里。",
+            logs: []
+          };
+        }
+
+        const strict = tryParse(input);
+        if (strict.ok) {
+          return buildSuccess(strict.value, input, [], false);
+        }
+
+        const logs = [];
+        let repaired = normalizeEnvelope(input, logs);
+        const previewSource = repaired;
+        const normalized = tryParse(repaired);
+        if (normalized.ok) {
+          return buildSuccess(normalized.value, repaired, logs, true);
+        }
+
+        if (hasHardMismatchedCloser(repaired)) {
+          logs.push("\u53d1\u73b0\u4e0d\u5339\u914d\u7684\u95ed\u5408\u7b26\uff0c\u5df2\u8df3\u8fc7 jsonrepair \u4e3b\u5f15\u64ce\u4ee5\u907f\u514d\u8bef\u5220\u5185\u5bb9\u3002");
+        } else {
+          const jsonRepairAttempt = repairWithJsonRepair(repaired, logs);
+          if (jsonRepairAttempt.ok) {
+            repaired = jsonRepairAttempt.source;
+            const jsonRepairParse = tryParse(repaired);
+            if (jsonRepairParse.ok) {
+              return buildSuccess(jsonRepairParse.value, repaired, logs, true);
+            }
+            logs.push("jsonrepair \u4e3b\u4fee\u590d\u5f15\u64ce\u8fd4\u56de\u7684\u5185\u5bb9\u4ecd\u65e0\u6cd5\u89e3\u6790\uff0c\u5df2\u8f6c\u5165\u672c\u5730\u515c\u5e95\u4fee\u590d\u3002");
+          }
+        }
+
+        repaired = repairJsonLike(repaired, logs);
+        const repairedParse = tryParse(repaired);
+        if (repairedParse.ok) {
+          return buildSuccess(repairedParse.value, repaired, logs, true);
+        }
+
+        return buildFailure(repaired, strict.error, repairedParse.error, logs, previewSource);
+      }
+
+      function buildSuccess(value, source, logs, repaired) {
+        const output = JSON.stringify(value, null, 2);
+        const compactOutput = JSON.stringify(value);
+        return {
+          ok: true,
+          repaired,
+          value,
+          source,
+          output,
+          compactOutput,
+          logs,
+          bytes: new Blob([output]).size,
+          lines: output.split("\n").length
+        };
+      }
+
+      function buildFailure(source, firstError, finalError, logs, previewSource = source) {
+        const position = getErrorPosition(finalError) ?? getErrorPosition(firstError);
+        const context = position == null ? null : getContext(source, position);
+        const previewOutput = buildDamagedJsonPreview(previewSource);
+        return {
+          ok: false,
+          output: previewOutput,
+          previewOutput,
+          previewLines: previewOutput ? previewOutput.split("\n").length : 0,
+          source,
+          firstError,
+          finalError,
+          logs,
+          position,
+          context
+        };
+      }
+
+      function repairWithJsonRepair(input, logs) {
+        const jsonrepair = getJsonRepairFunction();
+        if (!jsonrepair) {
+          logs.push("jsonrepair \u4e3b\u4fee\u590d\u5f15\u64ce\u672a\u52a0\u8f7d\uff0c\u5df2\u8f6c\u5165\u672c\u5730\u515c\u5e95\u4fee\u590d\u3002");
+          return { ok: false, source: input, error: null };
+        }
+
+        try {
+          const source = jsonrepair(input);
+          if (source !== input) {
+            logs.push("jsonrepair \u4e3b\u4fee\u590d\u5f15\u64ce\u5df2\u4fee\u590d\u635f\u574f\u7684 JSON \u5185\u5bb9\u3002");
+          }
+          return { ok: true, source };
+        } catch (error) {
+          logs.push("jsonrepair \u4e3b\u4fee\u590d\u5f15\u64ce\u672a\u80fd\u4fee\u590d\uff0c\u5df2\u8f6c\u5165\u672c\u5730\u515c\u5e95\u4fee\u590d\u3002");
+          return { ok: false, source: input, error };
+        }
+      }
+
+      function getJsonRepairFunction() {
+        if (window.JSONRepair && typeof window.JSONRepair.jsonrepair === "function") {
+          return window.JSONRepair.jsonrepair;
+        }
+        return null;
+      }
+
+      function hasHardMismatchedCloser(text) {
+        const stack = [];
+        let inString = false;
+        let escaped = false;
+
+        for (let i = 0; i < text.length; i += 1) {
+          const char = text[i];
+
+          if (inString) {
+            if (escaped) {
+              escaped = false;
+            } else if (char === "\\") {
+              escaped = true;
+            } else if (char === "\"") {
+              inString = false;
+            }
+            continue;
+          }
+
+          if (char === "\"") {
+            inString = true;
+            continue;
+          }
+
+          if (char === "{") {
+            stack.push("}");
+            continue;
+          }
+          if (char === "[") {
+            stack.push("]");
+            continue;
+          }
+          if (char === "}" || char === "]") {
+            if (stack[stack.length - 1] !== char) {
+              return true;
+            }
+            stack.pop();
+          }
+        }
+
+        return false;
+      }
+
+      function normalizeEnvelope(input, logs) {
+        let text = input;
+        if (text.charCodeAt(0) === 0xfeff) {
+          text = text.slice(1);
+          logs.push("移除 UTF-8 BOM。");
+        }
+
+        const trimmed = text.trim();
+        if (trimmed !== text) {
+          text = trimmed;
+          logs.push("移除首尾空白。");
+        }
+
+        const fenced = text.match(/^```(?:json|javascript|js)?\s*([\s\S]*?)\s*```$/i);
+        if (fenced) {
+          text = fenced[1].trim();
+          logs.push("提取 Markdown 代码块内的内容。");
+        }
+
+        const assigned = text.match(/^(?:(?:const|let|var)\s+)?[A-Za-z_$][\w$]*\s*=\s*([\s\S]*?);?\s*$/);
+        if (assigned && looksLikeJsonStart(assigned[1])) {
+          text = assigned[1].trim();
+          logs.push("移除变量赋值外壳。");
+        }
+
+        return text;
+      }
+
+      function looksLikeJsonStart(text) {
+        const first = String(text).trim().charAt(0);
+        return first === "{" || first === "[";
+      }
+
+      function repairJsonLike(input, logs) {
+        let text = input;
+        text = replaceSmartQuotes(text, logs);
+        text = removeComments(text, logs);
+        text = convertSingleQuotedStrings(text, logs);
+        text = escapeUnescapedStringControls(text, logs);
+        text = quoteUnquotedKeys(text, logs);
+        text = replaceBareLiterals(text, logs);
+        text = quoteBarewordValues(text, logs);
+        text = removeTrailingCommas(text, logs);
+        text = balanceTruncatedStructures(text, logs);
+        text = removeTrailingCommas(text, logs);
+        return text.trim();
+      }
+
+      function replaceSmartQuotes(text, logs) {
+        const next = text
+          .replace(/[\u201c\u201d]/g, "\"")
+          .replace(/[\u2018\u2019]/g, "'");
+        if (next !== text) {
+          logs.push("替换智能引号。");
+        }
+        return next;
+      }
+
+      function removeComments(text, logs) {
+        let out = "";
+        let changed = false;
+        let quote = null;
+        let escaped = false;
+
+        for (let i = 0; i < text.length; i += 1) {
+          const char = text[i];
+          const next = text[i + 1];
+
+          if (quote) {
+            out += char;
+            if (escaped) {
+              escaped = false;
+            } else if (char === "\\") {
+              escaped = true;
+            } else if (char === quote) {
+              quote = null;
+            }
+            continue;
+          }
+
+          if (char === "\"" || char === "'") {
+            quote = char;
+            out += char;
+            continue;
+          }
+
+          if (char === "/" && next === "/") {
+            changed = true;
+            i += 2;
+            while (i < text.length && text[i] !== "\n" && text[i] !== "\r") {
+              i += 1;
+            }
+            if (i < text.length) {
+              out += text[i];
+            }
+            continue;
+          }
+
+          if (char === "/" && next === "*") {
+            changed = true;
+            i += 2;
+            while (i < text.length - 1 && !(text[i] === "*" && text[i + 1] === "/")) {
+              i += 1;
+            }
+            if (i >= text.length - 1) {
+              logs.push("移除未闭合的块注释。");
+              break;
+            }
+            i += 1;
+            continue;
+          }
+
+          out += char;
+        }
+
+        if (changed) {
+          logs.push("移除 JavaScript 风格注释。");
+        }
+        return out;
+      }
+
+      function convertSingleQuotedStrings(text, logs) {
+        let out = "";
+        let changed = false;
+
+        for (let i = 0; i < text.length; i += 1) {
+          const char = text[i];
+          if (char !== "'") {
+            out += char;
+            if (char === "\"") {
+              const end = findStringEnd(text, i);
+              out += text.slice(i + 1, end + 1);
+              i = end;
+            }
+            continue;
+          }
+
+          changed = true;
+          const read = readSingleQuotedString(text, i);
+          out += JSON.stringify(read.value);
+          i = read.end;
+          if (!read.closed) {
+            logs.push("疑似截断，已补全未闭合的单引号字符串。");
+          }
+        }
+
+        if (changed) {
+          logs.push("将单引号字符串转换为 JSON 双引号字符串。");
+        }
+        return out;
+      }
+
+      function readSingleQuotedString(text, start) {
+        let value = "";
+        let escaped = false;
+
+        for (let i = start + 1; i < text.length; i += 1) {
+          const char = text[i];
+
+          if (escaped) {
+            value += decodeLooseEscape(char, "'");
+            escaped = false;
+            continue;
+          }
+
+          if (char === "\\") {
+            escaped = true;
+            continue;
+          }
+
+          if (char === "'") {
+            return { value, end: i, closed: true };
+          }
+
+          value += char;
+        }
+
+        if (escaped) {
+          value += "\\";
+        }
+        return { value, end: text.length - 1, closed: false };
+      }
+
+      function decodeLooseEscape(char, quote) {
+        const map = {
+          b: "\b",
+          f: "\f",
+          n: "\n",
+          r: "\r",
+          t: "\t",
+          v: "\v",
+          0: "\0"
+        };
+        if (char === quote) {
+          return quote;
+        }
+        if (char === "\\") {
+          return "\\";
+        }
+        return map[char] ?? "\\" + char;
+      }
+
+      function escapeUnescapedStringControls(text, logs) {
+        let out = "";
+        let changed = false;
+        let inString = false;
+        let escaped = false;
+
+        for (let i = 0; i < text.length; i += 1) {
+          const char = text[i];
+
+          if (!inString) {
+            out += char;
+            if (char === "\"") {
+              inString = true;
+            }
+            continue;
+          }
+
+          if (escaped) {
+            out += isControlCharacter(char) ? escapeControlCharacter(char) : char;
+            changed = changed || isControlCharacter(char);
+            escaped = false;
+            continue;
+          }
+
+          if (char === "\\") {
+            out += char;
+            escaped = true;
+            continue;
+          }
+
+          if (char === "\"") {
+            out += char;
+            inString = false;
+            continue;
+          }
+
+          if (isControlCharacter(char)) {
+            out += escapeControlCharacter(char);
+            changed = true;
+            continue;
+          }
+
+          out += char;
+        }
+
+        if (changed) {
+          logs.push("\u5b57\u7b26\u4e32\u5185\u5b58\u5728\u672a\u8f6c\u4e49\u63a7\u5236\u5b57\u7b26\uff0c\u5df2\u6309 JSON \u89c4\u5219\u8f6c\u4e49\u3002");
+        }
+        return out;
+      }
+
+      function isControlCharacter(char) {
+        return char.charCodeAt(0) <= 0x1f;
+      }
+
+      function escapeControlCharacter(char) {
+        const replacements = {
+          "\b": "\\b",
+          "\f": "\\f",
+          "\n": "\\n",
+          "\r": "\\r",
+          "\t": "\\t"
+        };
+        if (Object.prototype.hasOwnProperty.call(replacements, char)) {
+          return replacements[char];
+        }
+        return "\\u" + char.charCodeAt(0).toString(16).padStart(4, "0");
+      }
+
+      function quoteUnquotedKeys(text, logs) {
+        let out = "";
+        let changed = false;
+
+        for (let i = 0; i < text.length; i += 1) {
+          const char = text[i];
+
+          if (char === "\"") {
+            const end = findStringEnd(text, i);
+            out += text.slice(i, end + 1);
+            i = end;
+            continue;
+          }
+
+          if (char !== "{" && char !== ",") {
+            out += char;
+            continue;
+          }
+
+          out += char;
+          let j = i + 1;
+          while (j < text.length && isWhitespace(text[j])) {
+            out += text[j];
+            j += 1;
+          }
+
+          if (text[j] === "\"" || text[j] === "}" || text[j] === "]" || j >= text.length) {
+            i = j - 1;
+            continue;
+          }
+
+          const token = readBareToken(text, j);
+          if (!token.value) {
+            i = j - 1;
+            continue;
+          }
+
+          let k = token.end + 1;
+          while (k < text.length && isWhitespace(text[k])) {
+            k += 1;
+          }
+
+          if (text[k] === ":") {
+            out += JSON.stringify(token.value) + text.slice(token.end + 1, k + 1);
+            i = k;
+            changed = true;
+          } else {
+            out += text.slice(j, token.end + 1);
+            i = token.end;
+          }
+        }
+
+        if (changed) {
+          logs.push("为未加引号的对象 key 添加双引号。");
+        }
+        return out;
+      }
+
+      function replaceBareLiterals(text, logs) {
+        const replacements = {
+          True: "true",
+          False: "false",
+          None: "null",
+          undefined: "null",
+          NaN: "null",
+          Infinity: "null",
+          TRUE: "true",
+          FALSE: "false",
+          NULL: "null"
+        };
+        let out = "";
+        let changed = false;
+
+        for (let i = 0; i < text.length; i += 1) {
+          const char = text[i];
+          if (char === "\"") {
+            const end = findStringEnd(text, i);
+            out += text.slice(i, end + 1);
+            i = end;
+            continue;
+          }
+
+          if (!isIdentifierStart(char)) {
+            out += char;
+            continue;
+          }
+
+          let j = i + 1;
+          while (j < text.length && isIdentifierPart(text[j])) {
+            j += 1;
+          }
+          const word = text.slice(i, j);
+          if (Object.prototype.hasOwnProperty.call(replacements, word)) {
+            out += replacements[word];
+            changed = true;
+          } else {
+            out += word;
+          }
+          i = j - 1;
+        }
+
+        if (changed) {
+          logs.push("转换 Python/JavaScript 常见字面量。");
+        }
+        return out;
+      }
+
+      function quoteBarewordValues(text, logs) {
+        let out = "";
+        let changed = false;
+
+        for (let i = 0; i < text.length; i += 1) {
+          const char = text[i];
+          if (char === "\"") {
+            const end = findStringEnd(text, i);
+            out += text.slice(i, end + 1);
+            i = end;
+            continue;
+          }
+
+          if (!isIdentifierStart(char)) {
+            out += char;
+            continue;
+          }
+
+          const prev = previousSignificant(text, i - 1);
+          let j = i + 1;
+          while (j < text.length && isIdentifierPart(text[j])) {
+            j += 1;
+          }
+          const word = text.slice(i, j);
+          const next = nextSignificant(text, j);
+          const isValuePosition = prev === ":" || prev === "[" || prev === ",";
+          const isValueEnd = next === "," || next === "]" || next === "}" || next === "";
+          const knownJsonLiteral = word === "true" || word === "false" || word === "null";
+
+          if (isValuePosition && isValueEnd && !knownJsonLiteral) {
+            out += JSON.stringify(word);
+            changed = true;
+          } else {
+            out += word;
+          }
+          i = j - 1;
+        }
+
+        if (changed) {
+          logs.push("将简单裸字值转换为字符串。");
+        }
+        return out;
+      }
+
+      function removeTrailingCommas(text, logs) {
+        let out = "";
+        let changed = false;
+
+        for (let i = 0; i < text.length; i += 1) {
+          const char = text[i];
+          if (char === "\"") {
+            const end = findStringEnd(text, i);
+            out += text.slice(i, end + 1);
+            i = end;
+            continue;
+          }
+
+          if (char === ",") {
+            const next = nextSignificant(text, i + 1);
+            if (next === "}" || next === "]" || next === "") {
+              changed = true;
+              continue;
+            }
+          }
+
+          out += char;
+        }
+
+        if (changed) {
+          logs.push("移除尾随逗号。");
+        }
+        return out;
+      }
+
+      function balanceTruncatedStructures(text, logs) {
+        let out = "";
+        const stack = [];
+        let inString = false;
+        let escaped = false;
+        let truncated = false;
+
+        for (let i = 0; i < text.length; i += 1) {
+          const char = text[i];
+
+          if (inString) {
+            if (escaped) {
+              out += char;
+              escaped = false;
+              continue;
+            }
+            if (char === "\\") {
+              if (i === text.length - 1) {
+                truncated = true;
+                continue;
+              }
+              out += char;
+              escaped = true;
+              continue;
+            }
+            out += char;
+            if (char === "\"") {
+              inString = false;
+            }
+            continue;
+          }
+
+          if (char === "\"") {
+            inString = true;
+            out += char;
+            continue;
+          }
+
+          if (char === "{") {
+            stack.push("}");
+            out += char;
+            continue;
+          }
+
+          if (char === "[") {
+            stack.push("]");
+            out += char;
+            continue;
+          }
+
+          if (char === "}" || char === "]") {
+            if (stack[stack.length - 1] === char) {
+              stack.pop();
+              out += char;
+            } else {
+              out += char;
+              logs.push("发现不匹配的闭合符 `" + char + "`，已保留并交给解析器报错。");
+            }
+            continue;
+          }
+
+          out += char;
+        }
+
+        if (inString) {
+          out += "\"";
+          truncated = true;
+        }
+
+        out = fixDanglingTail(out, logs);
+
+        if (stack.length) {
+          out += stack.reverse().join("");
+          truncated = true;
+        }
+
+        if (truncated) {
+          logs.push("疑似截断，已尝试补全缺失的字符串、数组或对象闭合符。");
+        }
+
+        return out;
+      }
+
+      function fixDanglingTail(text, logs) {
+        let end = text.length - 1;
+        while (end >= 0 && isWhitespace(text[end])) {
+          end -= 1;
+        }
+        if (end < 0) {
+          return text;
+        }
+
+        const last = text[end];
+        if (last === ":") {
+          logs.push("疑似截断，缺失值已补为 null。");
+          return text.slice(0, end + 1) + "null" + text.slice(end + 1);
+        }
+        if (last === ",") {
+          logs.push("疑似截断，移除末尾未完成的逗号。");
+          return text.slice(0, end) + text.slice(end + 1);
+        }
+        if (last === "\"") {
+          const danglingKey = getDanglingObjectKeyRange(text, end);
+          if (danglingKey) {
+            logs.push("疑似截断，移除末尾未完成的对象 key。");
+            return text.slice(0, danglingKey.cutFrom) + text.slice(end + 1);
+          }
+        }
+        return text;
+      }
+
+      function getDanglingObjectKeyRange(text, end) {
+        const start = findStringStartByEnd(text, end);
+        if (start < 0 || !isInsideObjectAt(text, start)) {
+          return null;
+        }
+
+        const previous = previousSignificantIndex(text, start - 1);
+        if (previous < 0) {
+          return null;
+        }
+
+        const previousChar = text[previous];
+        if (previousChar === "{") {
+          return { cutFrom: start };
+        }
+        if (previousChar === ",") {
+          return { cutFrom: previous };
+        }
+        return null;
+      }
+
+      function findStringStartByEnd(text, end) {
+        for (let i = 0; i <= end; i += 1) {
+          if (text[i] !== "\"") {
+            continue;
+          }
+
+          const currentEnd = findStringEnd(text, i);
+          if (currentEnd === end) {
+            return i;
+          }
+          i = currentEnd;
+        }
+        return -1;
+      }
+
+      function isInsideObjectAt(text, position) {
+        const stack = [];
+        for (let i = 0; i < position; i += 1) {
+          const char = text[i];
+          if (char === "\"") {
+            i = findStringEnd(text, i);
+            continue;
+          }
+
+          if (char === "{" || char === "[") {
+            stack.push(char);
+            continue;
+          }
+
+          if (char === "}" && stack[stack.length - 1] === "{") {
+            stack.pop();
+            continue;
+          }
+
+          if (char === "]" && stack[stack.length - 1] === "[") {
+            stack.pop();
+          }
+        }
+        return stack[stack.length - 1] === "{";
+      }
+
+      function readBareToken(text, start) {
+        let end = start;
+        while (end < text.length && !isWhitespace(text[end]) && !":,{}[]\"'".includes(text[end])) {
+          end += 1;
+        }
+        return {
+          value: text.slice(start, end),
+          end: end - 1
+        };
+      }
+
+      function findStringEnd(text, start) {
+        let escaped = false;
+        for (let i = start + 1; i < text.length; i += 1) {
+          const char = text[i];
+          if (escaped) {
+            escaped = false;
+            continue;
+          }
+          if (char === "\\") {
+            escaped = true;
+            continue;
+          }
+          if (char === "\"") {
+            return i;
+          }
+        }
+        return text.length - 1;
+      }
+
+      function previousSignificant(text, start) {
+        for (let i = start; i >= 0; i -= 1) {
+          if (!isWhitespace(text[i])) {
+            return text[i];
+          }
+        }
+        return "";
+      }
+
+      function previousSignificantIndex(text, start) {
+        for (let i = start; i >= 0; i -= 1) {
+          if (!isWhitespace(text[i])) {
+            return i;
+          }
+        }
+        return -1;
+      }
+
+      function nextSignificant(text, start) {
+        for (let i = start; i < text.length; i += 1) {
+          if (!isWhitespace(text[i])) {
+            return text[i];
+          }
+        }
+        return "";
+      }
+
+      function isWhitespace(char) {
+        return /\s/.test(char);
+      }
+
+      function isIdentifierStart(char) {
+        return /[A-Za-z_$]/.test(char);
+      }
+
+      function isIdentifierPart(char) {
+        return /[A-Za-z0-9_$.-]/.test(char);
+      }
+
+      function getErrorPosition(error) {
+        if (!error || !error.message) {
+          return null;
+        }
+        const byPosition = error.message.match(/position\s+(\d+)/i);
+        if (byPosition) {
+          return Number(byPosition[1]);
+        }
+        return null;
+      }
+
+      function getLineColumn(text, position) {
+        const before = text.slice(0, position);
+        const lines = before.split(/\r\n|\r|\n/);
+        return {
+          line: lines.length,
+          column: lines[lines.length - 1].length + 1
+        };
+      }
+
+      function getContext(text, position) {
+        const start = Math.max(0, position - 80);
+        const end = Math.min(text.length, position + 80);
+        const markerOffset = position - start;
+        const lineColumn = getLineColumn(text, position);
+        return {
+          line: lineColumn.line,
+          column: lineColumn.column,
+          snippet: text.slice(start, end),
+          marker: " ".repeat(Math.max(0, markerOffset)) + "^"
+        };
+      }
+
+      function escapeHtml(text) {
+        return String(text)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      function highlightJson(text) {
+        const tokenPattern = /("(?:\\u[\da-fA-F]{4}|\\[^u]|[^\\"])*")(\s*:)?|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)|\b(true|false|null)\b|([{}\[\],:])/g;
+        let html = "";
+        let lastIndex = 0;
+        let match;
+
+        while ((match = tokenPattern.exec(text)) !== null) {
+          html += escapeHtml(text.slice(lastIndex, match.index));
+
+          if (match[1]) {
+            const className = match[2] ? "json-key" : "json-string";
+            html += '<span class="' + className + '">' + escapeHtml(match[1]) + "</span>";
+            if (match[2]) {
+              html += '<span class="json-punctuation">' + escapeHtml(match[2]) + "</span>";
+            }
+          } else if (match[3]) {
+            html += '<span class="json-number">' + escapeHtml(match[3]) + "</span>";
+          } else if (match[4]) {
+            const className = match[4] === "null" ? "json-null" : "json-boolean";
+            html += '<span class="' + className + '">' + match[4] + "</span>";
+          } else if (match[5]) {
+            html += '<span class="json-punctuation">' + escapeHtml(match[5]) + "</span>";
+          }
+
+          lastIndex = tokenPattern.lastIndex;
+        }
+
+        return html + escapeHtml(text.slice(lastIndex));
+      }
+
+      function highlightLooseJsonPreview(text) {
+        const tokenPattern = /("(?:\\.|[^\\"])*"|'(?:\\.|[^\\'])*'|`(?:\\.|[^\\`])*`)(\s*:)?|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)|\b(true|false|True|False)\b|\b(null|None|undefined|NaN|Infinity)\b|([A-Za-z_$][\w$.-]*)(\s*:)?|([{}\[\],:])/g;
+        let html = "";
+        let lastIndex = 0;
+        let match;
+
+        while ((match = tokenPattern.exec(text)) !== null) {
+          html += escapeHtml(text.slice(lastIndex, match.index));
+
+          if (match[1]) {
+            const className = match[2] ? "json-key" : "json-string";
+            html += '<span class="' + className + '">' + escapeHtml(match[1]) + "</span>";
+            if (match[2]) {
+              html += '<span class="json-punctuation">' + escapeHtml(match[2]) + "</span>";
+            }
+          } else if (match[3]) {
+            html += '<span class="json-number">' + escapeHtml(match[3]) + "</span>";
+          } else if (match[4]) {
+            html += '<span class="json-boolean">' + escapeHtml(match[4]) + "</span>";
+          } else if (match[5]) {
+            html += '<span class="json-null">' + escapeHtml(match[5]) + "</span>";
+          } else if (match[6]) {
+            const className = match[7] ? "json-key" : "json-string";
+            html += '<span class="' + className + '">' + escapeHtml(match[6]) + "</span>";
+            if (match[7]) {
+              html += '<span class="json-punctuation">' + escapeHtml(match[7]) + "</span>";
+            }
+          } else if (match[8]) {
+            html += '<span class="json-punctuation">' + escapeHtml(match[8]) + "</span>";
+          }
+
+          lastIndex = tokenPattern.lastIndex;
+        }
+
+        return html + escapeHtml(text.slice(lastIndex));
+      }
+
+      function buildDamagedJsonPreview(text) {
+        const input = String(text ?? "");
+        const lines = [];
+        const indentUnit = "  ";
+        let indent = 0;
+        let line = "";
+
+        function pushLine(force) {
+          const trimmed = line.trimEnd();
+          if (force || trimmed.trim()) {
+            lines.push(indentUnit.repeat(Math.max(0, indent)) + trimmed.trimStart());
+          }
+          line = "";
+        }
+
+        function appendToken(token) {
+          if (!token) {
+            return;
+          }
+          const trimmed = line.trimEnd();
+          const needsSpace = trimmed
+            && !/[\s{[(,:]$/.test(trimmed)
+            && !/^[}\]),:]/.test(token);
+          line = trimmed + (needsSpace ? " " : "") + token;
+        }
+
+        for (let i = 0; i < input.length; i += 1) {
+          const char = input[i];
+          const next = input[i + 1];
+
+          if (char === "\"" || char === "'" || char === "`") {
+            const token = readPreviewQuotedToken(input, i, char);
+            appendToken(token.value);
+            i = token.end;
+            continue;
+          }
+
+          if (char === "/" && next === "/") {
+            const token = readPreviewLineComment(input, i);
+            appendToken(token.value);
+            pushLine(true);
+            i = token.end;
+            continue;
+          }
+
+          if (char === "/" && next === "*") {
+            const token = readPreviewBlockComment(input, i);
+            appendToken(token.value);
+            i = token.end;
+            continue;
+          }
+
+          if (char === "{" || char === "[") {
+            appendToken(char);
+            pushLine(true);
+            indent += 1;
+            continue;
+          }
+
+          if (char === "}" || char === "]") {
+            pushLine(false);
+            indent = Math.max(0, indent - 1);
+            line = char;
+            continue;
+          }
+
+          if (char === ",") {
+            appendToken(",");
+            pushLine(true);
+            continue;
+          }
+
+          if (char === ":") {
+            line = line.trimEnd() + ": ";
+            continue;
+          }
+
+          if (isWhitespace(char)) {
+            if (char === "\n" || char === "\r") {
+              pushLine(false);
+              if (char === "\r" && next === "\n") {
+                i += 1;
+              }
+            } else if (line.trim()) {
+              line = line.trimEnd() + " ";
+            }
+            continue;
+          }
+
+          const token = readPreviewBareToken(input, i);
+          appendToken(token.value);
+          i = token.end;
+        }
+
+        pushLine(false);
+        return lines.join("\n") || input;
+      }
+
+      function readPreviewQuotedToken(text, start, quote) {
+        let value = quote;
+        let escaped = false;
+        for (let i = start + 1; i < text.length; i += 1) {
+          const char = text[i];
+          if (escaped) {
+            value += escapePreviewControl(char);
+            escaped = false;
+            continue;
+          }
+          if (char === "\\") {
+            value += char;
+            escaped = true;
+            continue;
+          }
+          value += escapePreviewControl(char);
+          if (char === quote) {
+            return { value, end: i };
+          }
+        }
+        return { value, end: text.length - 1 };
+      }
+
+      function readPreviewLineComment(text, start) {
+        let end = start + 2;
+        while (end < text.length && text[end] !== "\n" && text[end] !== "\r") {
+          end += 1;
+        }
+        return {
+          value: text.slice(start, end),
+          end: end - 1
+        };
+      }
+
+      function readPreviewBlockComment(text, start) {
+        let end = start + 2;
+        while (end < text.length - 1 && !(text[end] === "*" && text[end + 1] === "/")) {
+          end += 1;
+        }
+        if (end < text.length - 1) {
+          end += 2;
+        } else {
+          end = text.length;
+        }
+        return {
+          value: text.slice(start, end).replace(/\s+/g, " "),
+          end: end - 1
+        };
+      }
+
+      function readPreviewBareToken(text, start) {
+        let end = start;
+        while (
+          end < text.length
+          && !isWhitespace(text[end])
+          && !":,{}[]\"'`".includes(text[end])
+          && !(text[end] === "/" && (text[end + 1] === "/" || text[end + 1] === "*"))
+        ) {
+          end += 1;
+        }
+        return {
+          value: text.slice(start, end),
+          end: Math.max(start, end - 1)
+        };
+      }
+
+      function escapePreviewControl(char) {
+        if (char === "\n") {
+          return "\\n";
+        }
+        if (char === "\r") {
+          return "\\r";
+        }
+        if (char === "\t") {
+          return "\\t";
+        }
+        return char;
+      }
+
+      function renderJsonTree(value) {
+        const tree = document.createElement("div");
+        tree.className = "json-tree";
+        tree.appendChild(renderJsonValue(value, { depth: 0, key: null, comma: false }));
+        return tree;
+      }
+
+      function renderJsonValue(value, options) {
+        if (Array.isArray(value)) {
+          return renderJsonCompound(value, options, "[", "]", value.length + " 项");
+        }
+        if (value && typeof value === "object") {
+          return renderJsonCompound(value, options, "{", "}", Object.keys(value).length + " 键");
+        }
+        return renderJsonPrimitiveLine(value, options);
+      }
+
+      function renderJsonCompound(value, options, openToken, closeToken, summaryText) {
+        const entries = Array.isArray(value)
+          ? value.map((item, index) => ({ key: null, value: item, comma: index < value.length - 1 }))
+          : Object.keys(value).map((key, index, keys) => ({ key, value: value[key], comma: index < keys.length - 1 }));
+
+        if (entries.length === 0) {
+          const line = createJsonLine(options.depth, false);
+          appendJsonKey(line, options.key);
+          appendToken(line, "json-punctuation", openToken + closeToken + (options.comma ? "," : ""));
+          return line;
+        }
+
+        const node = document.createElement("div");
+        node.className = "json-node";
+
+        const openLine = createJsonLine(options.depth, true);
+        appendJsonKey(openLine, options.key);
+        appendToken(openLine, "json-punctuation", openToken);
+
+        const summary = document.createElement("span");
+        summary.className = "json-summary";
+        summary.hidden = true;
+        summary.textContent = " … " + summaryText + " " + closeToken + (options.comma ? "," : "");
+        appendLineNode(openLine, summary);
+
+        const toggle = openLine.querySelector(".json-toggle");
+        const children = document.createElement("div");
+        children.className = "json-children";
+        const closeLine = createJsonLine(options.depth, false);
+        appendToken(closeLine, "json-punctuation", closeToken + (options.comma ? "," : ""));
+
+        for (const entry of entries) {
+          children.appendChild(renderJsonValue(entry.value, {
+            depth: options.depth + 1,
+            key: entry.key,
+            comma: entry.comma
+          }));
+        }
+
+        toggle.addEventListener("click", () => {
+          setJsonNodeCollapsed(node, !node.classList.contains("is-collapsed"));
+        });
+
+        node.appendChild(openLine);
+        node.appendChild(children);
+        node.appendChild(closeLine);
+        setJsonNodeCollapsed(node, false);
+        return node;
+      }
+
+      function setJsonNodeCollapsed(node, collapsed) {
+        const toggle = node.querySelector(":scope > .json-line .json-toggle");
+        const summary = node.querySelector(":scope > .json-line .json-summary");
+        const children = node.querySelector(":scope > .json-children");
+        const closeLine = node.querySelector(":scope > .json-line:last-child");
+
+        node.classList.toggle("is-collapsed", collapsed);
+        toggle.textContent = collapsed ? "▸" : "▾";
+        toggle.setAttribute("aria-expanded", String(!collapsed));
+        toggle.setAttribute("title", collapsed ? "展开" : "折叠");
+        summary.hidden = !collapsed;
+        children.hidden = collapsed;
+        closeLine.hidden = collapsed;
+        scheduleMinimapUpdate();
+      }
+
+      function renderJsonPrimitiveLine(value, options) {
+        const line = createJsonLine(options.depth, false);
+        appendJsonKey(line, options.key);
+        appendJsonPrimitive(line, value);
+        if (options.comma) {
+          appendToken(line, "json-punctuation", ",");
+        }
+        if (typeof value === "string" && looksLikeMarkdown(value)) {
+          const wrapper = document.createElement("div");
+          wrapper.className = "json-value-node";
+          const preview = createMarkdownPreview(value, options.depth);
+          appendLineNode(line, createMarkdownToggle(preview));
+          wrapper.appendChild(line);
+          wrapper.appendChild(preview);
+          return wrapper;
+        }
+        return line;
+      }
+
+      function createJsonLine(depth, hasToggle) {
+        const line = document.createElement("div");
+        line.className = "json-line";
+        const gutter = document.createElement("span");
+        gutter.className = "json-gutter";
+        gutter.appendChild(document.createTextNode("  ".repeat(depth)));
+
+        if (hasToggle) {
+          const toggle = document.createElement("button");
+          toggle.className = "json-toggle";
+          toggle.type = "button";
+          toggle.textContent = "▾";
+          toggle.setAttribute("aria-label", "折叠或展开此层级");
+          gutter.appendChild(toggle);
+        } else {
+          const spacer = document.createElement("span");
+          spacer.className = "json-spacer";
+          spacer.textContent = "";
+          gutter.appendChild(spacer);
+        }
+
+        const content = document.createElement("span");
+        content.className = "json-content";
+        line.appendChild(gutter);
+        line.appendChild(content);
+        return line;
+      }
+
+      function appendJsonKey(line, key) {
+        if (key == null) {
+          return;
+        }
+        appendToken(line, "json-key", JSON.stringify(String(key)));
+        appendToken(line, "json-punctuation", ": ");
+      }
+
+      function appendJsonPrimitive(line, value) {
+        if (typeof value === "string") {
+          appendToken(line, "json-string", JSON.stringify(value));
+        } else if (typeof value === "number") {
+          appendToken(line, "json-number", String(value));
+        } else if (typeof value === "boolean") {
+          appendToken(line, "json-boolean", String(value));
+        } else {
+          appendToken(line, "json-null", "null");
+        }
+      }
+
+      function appendToken(line, className, text) {
+        const span = document.createElement("span");
+        span.className = className;
+        span.textContent = text;
+        appendLineNode(line, span);
+      }
+
+      function appendLineNode(line, node) {
+        const content = line.querySelector(":scope > .json-content");
+        (content || line).appendChild(node);
+      }
+
+      function looksLikeMarkdown(value) {
+        if (!value || value.length < 6) {
+          return false;
+        }
+        return /(^|\n)\s{0,3}#{1,6}\s+\S/.test(value)
+          || /(^|\n)\s{0,3}[-*]\s+\S/.test(value)
+          || /(^|\n)\s{0,3}\d+\.\s+\S/.test(value)
+          || /(^|\n)\s{0,3}>\s+\S/.test(value)
+          || /```/.test(value)
+          || /\[[^\]]+\]\([^)]+\)/.test(value)
+          || /\*\*[^*]+\*\*/.test(value)
+          || /\n\s*\n/.test(value);
+      }
+
+      function createMarkdownToggle(preview) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "md-toggle";
+        button.textContent = "MD";
+        button.setAttribute("aria-expanded", "false");
+        button.setAttribute("title", "展开 Markdown 预览");
+        button.addEventListener("click", () => {
+          const expanded = preview.hidden;
+          preview.hidden = !expanded;
+          button.setAttribute("aria-expanded", String(expanded));
+          button.setAttribute("title", expanded ? "收起 Markdown 预览" : "展开 Markdown 预览");
+          scheduleMinimapUpdate();
+        });
+        return button;
+      }
+
+      function createMarkdownPreview(value, depth) {
+        const preview = document.createElement("div");
+        preview.className = "md-preview";
+        preview.hidden = true;
+        preview.style.setProperty("--md-indent", Math.max(24, depth * 16 + 22) + "px");
+        preview.innerHTML = renderMarkdown(value);
+        return preview;
+      }
+
+      function renderMarkdown(markdown) {
+        const lines = String(markdown).replace(/\r\n?/g, "\n").split("\n");
+        let html = "";
+        let paragraph = [];
+        let listType = null;
+        let listItems = [];
+        let inCode = false;
+        let codeLines = [];
+
+        const flushParagraph = () => {
+          if (!paragraph.length) {
+            return;
+          }
+          html += "<p>" + paragraph.map(parseInlineMarkdown).join("<br>") + "</p>";
+          paragraph = [];
+        };
+        const flushList = () => {
+          if (!listType) {
+            return;
+          }
+          html += "<" + listType + ">" + listItems.map((item) => "<li>" + parseInlineMarkdown(item) + "</li>").join("") + "</" + listType + ">";
+          listType = null;
+          listItems = [];
+        };
+        const flushCode = () => {
+          html += "<pre><code>" + escapeHtml(codeLines.join("\n")) + "</code></pre>";
+          codeLines = [];
+        };
+
+        for (const line of lines) {
+          if (inCode) {
+            if (/^\s*```/.test(line)) {
+              flushCode();
+              inCode = false;
+            } else {
+              codeLines.push(line);
+            }
+            continue;
+          }
+
+          if (/^\s*```/.test(line)) {
+            flushParagraph();
+            flushList();
+            inCode = true;
+            codeLines = [];
+            continue;
+          }
+
+          if (!line.trim()) {
+            flushParagraph();
+            flushList();
+            continue;
+          }
+
+          const heading = line.match(/^\s{0,3}(#{1,6})\s+(.+)$/);
+          if (heading) {
+            flushParagraph();
+            flushList();
+            const level = heading[1].length;
+            html += "<h" + level + ">" + parseInlineMarkdown(heading[2]) + "</h" + level + ">";
+            continue;
+          }
+
+          const quote = line.match(/^\s{0,3}>\s?(.*)$/);
+          if (quote) {
+            flushParagraph();
+            flushList();
+            html += "<blockquote>" + parseInlineMarkdown(quote[1]) + "</blockquote>";
+            continue;
+          }
+
+          const unordered = line.match(/^\s{0,3}[-*]\s+(.+)$/);
+          if (unordered) {
+            flushParagraph();
+            if (listType && listType !== "ul") {
+              flushList();
+            }
+            listType = "ul";
+            listItems.push(unordered[1]);
+            continue;
+          }
+
+          const ordered = line.match(/^\s{0,3}\d+\.\s+(.+)$/);
+          if (ordered) {
+            flushParagraph();
+            if (listType && listType !== "ol") {
+              flushList();
+            }
+            listType = "ol";
+            listItems.push(ordered[1]);
+            continue;
+          }
+
+          flushList();
+          paragraph.push(line);
+        }
+
+        if (inCode) {
+          flushCode();
+        }
+        flushParagraph();
+        flushList();
+        return html || "<p></p>";
+      }
+
+      function parseInlineMarkdown(text) {
+        let html = escapeHtml(text);
+        html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
+        html = html.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (match, label, url) => {
+          const normalized = url.replace(/&amp;/g, "&");
+          if (!isSafeMarkdownUrl(normalized)) {
+            return label;
+          }
+          return '<a href="' + escapeHtml(normalized) + '" target="_blank" rel="noopener noreferrer">' + label + "</a>";
+        });
+        html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+        html = html.replace(/(^|[^*])\*([^*]+)\*/g, "$1<em>$2</em>");
+        return html;
+      }
+
+      function isSafeMarkdownUrl(url) {
+        return /^(https?:\/\/|mailto:|#)/i.test(url);
+      }
+
+      function renderSuccessOutput(result) {
+        currentOutput = result.output;
+        currentCompactOutput = result.compactOutput;
+
+        if (displayMode === "compact") {
+          elements.output.innerHTML = highlightJson(result.compactOutput);
+          setOutputClass("output compact");
+        } else {
+          elements.output.replaceChildren(renderJsonTree(result.value));
+          setOutputClass("output tree");
+        }
+      }
+
+      function renderFailureOutput(result) {
+        currentOutput = result.previewOutput || "";
+        currentCompactOutput = currentOutput;
+        elements.output.innerHTML = highlightLooseJsonPreview(currentOutput || buildErrorSummary(result));
+        setOutputClass("output preview");
+      }
+
+      function setOutputClass(baseClass) {
+        elements.output.className = baseClass + (wordWrap ? " wrap" : "");
+      }
+
+      function updateDisplayModeButton() {
+        const compact = displayMode === "compact";
+        elements.displayModeBtn.textContent = compact ? "紧凑" : "格式化";
+        elements.displayModeBtn.setAttribute("aria-pressed", String(compact));
+        elements.displayModeBtn.setAttribute("title", compact ? "当前为紧凑 JSON，点击切换为格式化树形展示" : "当前为格式化树形展示，点击切换为紧凑 JSON");
+      }
+
+      function toggleDisplayMode() {
+        displayMode = displayMode === "pretty" ? "compact" : "pretty";
+        updateDisplayModeButton();
+        render();
+      }
+
+      function updateWrapButton() {
+        elements.wrapBtn.setAttribute("aria-pressed", String(wordWrap));
+        elements.wrapBtn.textContent = wordWrap ? "已换行" : "自动换行";
+        elements.wrapBtn.setAttribute("title", wordWrap ? "当前长行会按结果区宽度折行，点击关闭" : "当前长行保持横向滚动，点击开启自动折行");
+      }
+
+      function toggleWordWrap() {
+        wordWrap = !wordWrap;
+        updateWrapButton();
+        if (elements.output.classList.contains("output")) {
+          elements.output.classList.toggle("wrap", wordWrap);
+        }
+        scheduleMinimapUpdate();
+      }
+
+      function getCopyOutput() {
+        return displayMode === "compact" ? currentCompactOutput : currentOutput;
+      }
+
+      function scheduleMinimapUpdate() {
+        if (minimapUpdateFrame) {
+          cancelAnimationFrame(minimapUpdateFrame);
+        }
+        minimapUpdateFrame = requestAnimationFrame(() => {
+          minimapUpdateFrame = 0;
+          updateMinimap();
+        });
+      }
+
+      function updateMinimap() {
+        const hasResult = Boolean(currentOutput) && !elements.output.classList.contains("placeholder");
+        if (!hasResult) {
+          elements.minimap.hidden = true;
+          elements.minimapMarks.replaceChildren();
+          return;
+        }
+
+        elements.minimap.hidden = false;
+        elements.minimapMarks.replaceChildren();
+
+        const scrollHeight = Math.max(elements.output.scrollHeight, 1);
+        const clientHeight = Math.max(elements.output.clientHeight, 1);
+        const lineElements = getMinimapLineElements();
+        const maxMarks = 420;
+        const step = Math.max(1, Math.ceil(lineElements.length / maxMarks));
+
+        for (let index = 0; index < lineElements.length; index += step) {
+          const line = lineElements[index];
+          const mark = document.createElement("div");
+          mark.className = "minimap-mark " + getMinimapMarkType(line);
+          const top = Math.min(99.5, Math.max(0, (line.offsetTop / scrollHeight) * 100));
+          const gutterText = line.querySelector(".json-gutter")?.textContent || "";
+          const depth = Math.max(0, Math.floor(gutterText.replace(/[▾▸]/g, "").length / 2));
+          mark.style.top = top + "%";
+          mark.style.left = Math.min(20, depth * 3) + "px";
+          mark.style.right = "2px";
+          elements.minimapMarks.appendChild(mark);
+        }
+
+        elements.minimapTrack.setAttribute("aria-valuemin", "0");
+        elements.minimapTrack.setAttribute("aria-valuemax", String(Math.max(0, scrollHeight - clientHeight)));
+        updateMinimapViewport();
+      }
+
+      function getMinimapLineElements() {
+        const lines = Array.from(elements.output.querySelectorAll(".json-line"))
+          .filter((line) => line.getClientRects().length > 0);
+        if (lines.length) {
+          return lines;
+        }
+        return elements.output.innerText
+          ? [{ offsetTop: 0, querySelector: () => null }]
+          : [];
+      }
+
+      function getMinimapMarkType(line) {
+        if (line.querySelector?.(".json-toggle")) {
+          return "compound";
+        }
+        if (line.querySelector?.(".json-string")) {
+          return "string";
+        }
+        if (line.querySelector?.(".json-number, .json-boolean, .json-null")) {
+          return "scalar";
+        }
+        return "";
+      }
+
+      function updateMinimapViewport() {
+        if (elements.minimap.hidden) {
+          return;
+        }
+        const scrollHeight = Math.max(elements.output.scrollHeight, 1);
+        const clientHeight = Math.max(elements.output.clientHeight, 1);
+        const viewportTop = Math.min(100, Math.max(0, (elements.output.scrollTop / scrollHeight) * 100));
+        const viewportHeight = Math.min(100, Math.max(8, (clientHeight / scrollHeight) * 100));
+        elements.minimapViewport.style.top = viewportTop + "%";
+        elements.minimapViewport.style.height = viewportHeight + "%";
+        elements.minimapTrack.setAttribute("aria-valuenow", String(Math.round(elements.output.scrollTop)));
+      }
+
+      function scrollOutputFromMinimap(event) {
+        const rect = elements.minimapTrack.getBoundingClientRect();
+        const ratio = Math.min(1, Math.max(0, (event.clientY - rect.top) / Math.max(rect.height, 1)));
+        const maxScroll = Math.max(0, elements.output.scrollHeight - elements.output.clientHeight);
+        elements.output.scrollTop = ratio * maxScroll;
+        updateMinimapViewport();
+      }
+
+      function setupMinimapNavigation() {
+        let dragging = false;
+
+        elements.output.addEventListener("scroll", updateMinimapViewport);
+        elements.minimapTrack.addEventListener("pointerdown", (event) => {
+          if (elements.minimap.hidden) {
+            return;
+          }
+          dragging = true;
+          elements.minimapTrack.setPointerCapture(event.pointerId);
+          scrollOutputFromMinimap(event);
+          event.preventDefault();
+        });
+        elements.minimapTrack.addEventListener("pointermove", (event) => {
+          if (dragging) {
+            scrollOutputFromMinimap(event);
+          }
+        });
+        function endDrag(event) {
+          if (!dragging) {
+            return;
+          }
+          dragging = false;
+          if (elements.minimapTrack.hasPointerCapture(event.pointerId)) {
+            elements.minimapTrack.releasePointerCapture(event.pointerId);
+          }
+        }
+        elements.minimapTrack.addEventListener("pointerup", endDrag);
+        elements.minimapTrack.addEventListener("pointercancel", endDrag);
+        elements.minimapTrack.addEventListener("keydown", (event) => {
+          const maxScroll = Math.max(0, elements.output.scrollHeight - elements.output.clientHeight);
+          if (event.key === "ArrowUp") {
+            elements.output.scrollTop -= Math.max(40, elements.output.clientHeight * 0.1);
+            event.preventDefault();
+          } else if (event.key === "ArrowDown") {
+            elements.output.scrollTop += Math.max(40, elements.output.clientHeight * 0.1);
+            event.preventDefault();
+          } else if (event.key === "Home") {
+            elements.output.scrollTop = 0;
+            event.preventDefault();
+          } else if (event.key === "End") {
+            elements.output.scrollTop = maxScroll;
+            event.preventDefault();
+          }
+          updateMinimapViewport();
+        });
+
+        window.addEventListener("resize", scheduleMinimapUpdate);
+        if ("ResizeObserver" in window) {
+          const observer = new ResizeObserver(scheduleMinimapUpdate);
+          observer.observe(elements.output);
+          observer.observe(elements.resultPane);
+        }
+      }
+
+      function render() {
+        updateInputMeta();
+        const result = parseContent(elements.input.value);
+
+        if (result.empty) {
+          currentOutput = "";
+          currentCompactOutput = "";
+          elements.output.textContent = result.output;
+          setOutputClass("output placeholder");
+          elements.resultMeta.textContent = "等待输入";
+          elements.diagnostics.hidden = true;
+          elements.diagnostics.replaceChildren();
+          setStatus("待输入", "");
+          scheduleMinimapUpdate();
+          return;
+        }
+
+        if (result.ok) {
+          renderSuccessOutput(result);
+          elements.resultMeta.textContent = result.lines + " 行 / " + result.bytes + " 字节";
+          setStatus(result.repaired ? "已修复" : "已解析", result.repaired ? "warn" : "ok");
+          renderDiagnostics(result);
+          scheduleMinimapUpdate();
+          return;
+        }
+
+        renderFailureOutput(result);
+        elements.resultMeta.textContent = "结构预览 / " + result.previewLines + " 行";
+        setStatus("预览", "error");
+        renderDiagnostics(result);
+        scheduleMinimapUpdate();
+      }
+
+      function buildErrorSummary(result) {
+        const lines = [
+          "无法解析为 JSON。",
+          "",
+          "最终错误：",
+          result.finalError ? result.finalError.message : "未知错误"
+        ];
+        if (result.context) {
+          lines.push("", "位置：第 " + result.context.line + " 行，第 " + result.context.column + " 列");
+          lines.push("", result.context.snippet, result.context.marker);
+        }
+        return lines.join("\n");
+      }
+
+      function renderDiagnostics(result) {
+        const root = elements.diagnostics;
+        root.replaceChildren();
+
+        if (result.ok && result.logs.length === 0) {
+          root.hidden = true;
+          return;
+        }
+
+        if (!result.ok) {
+          root.appendChild(createErrorBlock(result));
+        }
+
+        if (result.logs.length) {
+          root.appendChild(createLogBlock(result.logs, result.ok));
+        }
+
+        root.hidden = false;
+      }
+
+      function createErrorBlock(result) {
+        const block = document.createElement("div");
+        block.className = "diag-block";
+
+        const title = document.createElement("div");
+        title.className = "diag-title error";
+        title.textContent = "错误诊断";
+        block.appendChild(title);
+
+        const message = document.createElement("div");
+        message.textContent = result.finalError ? result.finalError.message : "解析失败。";
+        block.appendChild(message);
+
+        if (result.context) {
+          const context = document.createElement("pre");
+          context.className = "context";
+          context.textContent = "第 " + result.context.line + " 行，第 " + result.context.column + " 列\n"
+            + result.context.snippet + "\n"
+            + result.context.marker;
+          block.appendChild(context);
+        }
+
+        return block;
+      }
+
+      function createLogBlock(logs, ok) {
+        const block = document.createElement("details");
+        block.className = "diag-block";
+        block.open = true;
+
+        const title = document.createElement("summary");
+        title.className = "diag-title " + (ok ? "warn" : "error");
+        title.textContent = ok ? "修复记录" : "已尝试的修复";
+        block.appendChild(title);
+
+        const list = document.createElement("ol");
+        list.className = "diag-list";
+        for (const item of dedupe(logs)) {
+          const li = document.createElement("li");
+          li.textContent = item;
+          list.appendChild(li);
+        }
+        block.appendChild(list);
+        return block;
+      }
+
+      function dedupe(items) {
+        return items.filter((item, index) => items.indexOf(item) === index);
+      }
+
+      async function copyResult() {
+        const output = getCopyOutput();
+        if (!output) {
+          return;
+        }
+        try {
+          await navigator.clipboard.writeText(output);
+          setStatus("已复制", "ok");
+        } catch (error) {
+          const shadow = document.createElement("textarea");
+          shadow.value = output;
+          shadow.setAttribute("readonly", "");
+          shadow.style.position = "fixed";
+          shadow.style.opacity = "0";
+          document.body.appendChild(shadow);
+          shadow.select();
+          document.execCommand("copy");
+          shadow.remove();
+          setStatus("已复制", "ok");
+        }
+      }
+
+      function loadSample() {
+        elements.input.value = samples[sampleIndex % samples.length];
+        sampleIndex += 1;
+        render();
+        elements.input.focus();
+      }
+
+      function clearAll() {
+        elements.input.value = "";
+        render();
+        elements.input.focus();
+      }
+
+      function isSplitLayoutActive() {
+        return window.matchMedia("(min-width: 761px)").matches;
+      }
+
+      function getSplitBounds() {
+        const rect = elements.workspace.getBoundingClientRect();
+        const splitterWidth = elements.splitter.offsetWidth || 12;
+        const available = Math.max(0, rect.width - splitterWidth);
+        const minInput = Math.min(260, Math.max(160, available * 0.45));
+        const minResult = Math.min(360, Math.max(220, available * 0.45));
+        const maxInput = Math.max(minInput, available - minResult);
+        return { available, minInput, maxInput };
+      }
+
+      function setInputPaneWidth(width) {
+        if (!isSplitLayoutActive()) {
+          return;
+        }
+
+        const bounds = getSplitBounds();
+        const next = Math.min(Math.max(width, bounds.minInput), bounds.maxInput);
+        const rounded = Math.round(next);
+        elements.workspace.style.setProperty("--input-width", rounded + "px");
+        updateSplitterValue(rounded);
+      }
+
+      function updateSplitterValue(width) {
+        const bounds = getSplitBounds();
+        if (!bounds.available) {
+          return;
+        }
+        const percent = Math.round((width / bounds.available) * 100);
+        elements.splitter.setAttribute("aria-valuemin", "20");
+        elements.splitter.setAttribute("aria-valuemax", "80");
+        elements.splitter.setAttribute("aria-valuenow", String(percent));
+      }
+
+      function resetPaneSplit() {
+        elements.workspace.style.removeProperty("--input-width");
+        const width = elements.inputPane.getBoundingClientRect().width;
+        updateSplitterValue(width);
+      }
+
+      function setupResizablePanes() {
+        let drag = null;
+
+        elements.splitter.addEventListener("pointerdown", (event) => {
+          if (!isSplitLayoutActive()) {
+            return;
+          }
+
+          drag = {
+            startX: event.clientX,
+            startWidth: elements.inputPane.getBoundingClientRect().width
+          };
+          elements.workspace.classList.add("is-resizing");
+          document.body.classList.add("is-resizing");
+          elements.splitter.setPointerCapture(event.pointerId);
+          event.preventDefault();
+        });
+
+        elements.splitter.addEventListener("pointermove", (event) => {
+          if (!drag) {
+            return;
+          }
+
+          setInputPaneWidth(drag.startWidth + event.clientX - drag.startX);
+        });
+
+        function endDrag(event) {
+          if (!drag) {
+            return;
+          }
+
+          drag = null;
+          elements.workspace.classList.remove("is-resizing");
+          document.body.classList.remove("is-resizing");
+          if (event && elements.splitter.hasPointerCapture(event.pointerId)) {
+            elements.splitter.releasePointerCapture(event.pointerId);
+          }
+        }
+
+        elements.splitter.addEventListener("pointerup", endDrag);
+        elements.splitter.addEventListener("pointercancel", endDrag);
+        elements.splitter.addEventListener("dblclick", resetPaneSplit);
+        elements.splitter.addEventListener("keydown", (event) => {
+          if (!isSplitLayoutActive()) {
+            return;
+          }
+
+          const current = elements.inputPane.getBoundingClientRect().width;
+          if (event.key === "ArrowLeft") {
+            setInputPaneWidth(current - 24);
+            event.preventDefault();
+          } else if (event.key === "ArrowRight") {
+            setInputPaneWidth(current + 24);
+            event.preventDefault();
+          } else if (event.key === "Home") {
+            setInputPaneWidth(getSplitBounds().minInput);
+            event.preventDefault();
+          } else if (event.key === "End") {
+            setInputPaneWidth(getSplitBounds().maxInput);
+            event.preventDefault();
+          } else if (event.key === "Enter" || event.key === " ") {
+            resetPaneSplit();
+            event.preventDefault();
+          }
+        });
+
+        window.addEventListener("resize", () => {
+          if (!isSplitLayoutActive()) {
+            return;
+          }
+          const current = elements.inputPane.getBoundingClientRect().width;
+          setInputPaneWidth(current);
+        });
+
+        resetPaneSplit();
+      }
+
+      function runSelfTests() {
+        const cases = [
+          {
+            name: "standard",
+            input: "{\"a\":1,\"b\":[true,null]}",
+            ok: true
+          },
+          {
+            name: "compressed",
+            input: "{\"user\":{\"id\":1,\"name\":\"A\"}}",
+            ok: true,
+            contains: "\n  \"user\""
+          },
+          {
+            name: "raw newline in string",
+            input: "{\"message\":\"hello\nworld\"}",
+            ok: true,
+            contains: "hello\\nworld",
+            requiresAnyLog: ["jsonrepair", "\u63a7\u5236\u5b57\u7b26"]
+          },
+          {
+            name: "raw tab in string",
+            input: "{\"message\":\"a\tb\"}",
+            ok: true,
+            contains: "a\\tb",
+            requiresAnyLog: ["jsonrepair", "\u63a7\u5236\u5b57\u7b26"]
+          },
+          {
+            name: "escaped newline stays valid",
+            input: "{\"message\":\"hello\\nworld\"}",
+            ok: true,
+            contains: "hello\\nworld"
+          },
+          {
+            name: "jsonrepair primary engine",
+            input: "{user:{id:1,name:'Lin'},items:[1,2,],}",
+            ok: true,
+            contains: "\"user\"",
+            requiresLog: "jsonrepair"
+          },
+          {
+            name: "comments trailing commas",
+            input: "{// note\nid: 1, list: [1,2,],}",
+            ok: true,
+            contains: "\"id\": 1"
+          },
+          {
+            name: "single quotes bare keys",
+            input: "{name: 'Ada', status: ok}",
+            ok: true,
+            contains: "\"status\": \"ok\""
+          },
+          {
+            name: "python literals",
+            input: "{enabled: True, missing: None}",
+            ok: true,
+            contains: "\"missing\": null"
+          },
+          {
+            name: "truncated object",
+            input: "{\"a\":{\"b\":[\"x\",\"y\"",
+            ok: true,
+            requiresAnyLog: ["jsonrepair", "疑似截断"]
+          },
+          {
+            name: "truncated dangling key",
+            input: "{\"user\":{\"id\":42,\"name\":\"Lin\",\"roles\":[\"admin\",\"editor\"],\"active\":true},\"it",
+            ok: true,
+            contains: "\"user\"",
+            requiresAnyLog: ["jsonrepair", "未完成的对象 key"]
+          },
+          {
+            name: "missing final object close",
+            input: "{\"a\":1,\"b\":2",
+            ok: true,
+            contains: "\"b\": 2",
+            requiresAnyLog: ["jsonrepair", "补全缺失"]
+          },
+          {
+            name: "missing final array close",
+            input: "[1,2,3",
+            ok: true,
+            contains: "3",
+            requiresAnyLog: ["jsonrepair", "补全缺失"]
+          },
+          {
+            name: "unrecoverable",
+            input: "{]",
+            ok: false,
+            previewContains: "]"
+          },
+          {
+            name: "failure structural preview",
+            input: "{user:{id:1],name:Lin",
+            ok: false,
+            previewContains: "user"
+          }
+        ];
+
+        const results = cases.map((test) => {
+          const actual = parseContent(test.input);
+          const passed = actual.ok === test.ok
+            && (!test.contains || actual.output.includes(test.contains))
+            && (!test.previewContains || actual.previewOutput.includes(test.previewContains))
+            && (!test.requiresLog || actual.logs.some((item) => item.includes(test.requiresLog)))
+            && (!test.requiresAnyLog || test.requiresAnyLog.some((needle) => actual.logs.some((item) => item.includes(needle))));
+          return {
+            name: test.name,
+            passed,
+            ok: actual.ok,
+            logs: actual.logs,
+            output: actual.output,
+            error: actual.finalError ? actual.finalError.message : ""
+          };
+        });
+
+        return {
+          passed: results.every((item) => item.passed),
+          results
+        };
+      }
+
+      elements.formatBtn.addEventListener("click", render);
+      elements.displayModeBtn.addEventListener("click", toggleDisplayMode);
+      elements.wrapBtn.addEventListener("click", toggleWordWrap);
+      elements.copyBtn.addEventListener("click", copyResult);
+      elements.clearBtn.addEventListener("click", clearAll);
+      elements.sampleBtn.addEventListener("click", loadSample);
+      elements.input.addEventListener("input", updateInputMeta);
+      elements.input.addEventListener("keydown", (event) => {
+        if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+          event.preventDefault();
+          render();
+        }
+      });
+
+      window.JsonViewer = {
+        buildDamagedJsonPreview,
+        highlightJson,
+        highlightLooseJsonPreview,
+        parseContent,
+        repairJsonLike,
+        runSelfTests
+      };
+
+      setupResizablePanes();
+      setupMinimapNavigation();
+      updateDisplayModeButton();
+      updateWrapButton();
+      updateInputMeta();
+    })();
+  </script>
+</body>
+</html>

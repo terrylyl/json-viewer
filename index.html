@@ -395,6 +395,41 @@
       outline: none;
     }
 
+    .embedded-json-toggle {
+      border-color: rgba(255, 211, 105, 0.36);
+      background: rgba(255, 211, 105, 0.08);
+      color: var(--json-string);
+    }
+
+    .embedded-json-toggle:hover,
+    .embedded-json-toggle:focus-visible {
+      border-color: rgba(255, 211, 105, 0.68);
+      background: rgba(255, 211, 105, 0.16);
+    }
+
+    .embedded-json-preview {
+      max-width: min(980px, calc(100% - 20px));
+      margin: 6px 0 10px var(--embedded-json-indent, 24px);
+      padding: 10px 12px;
+      overflow: auto;
+      border: 1px solid rgba(255, 211, 105, 0.22);
+      border-radius: 8px;
+      background: #0e151c;
+      color: var(--code-text);
+      font-family: "Cascadia Mono", "Consolas", "SFMono-Regular", monospace;
+      font-size: 13px;
+      line-height: 1.55;
+      white-space: normal;
+    }
+
+    .embedded-json-preview[hidden] {
+      display: none;
+    }
+
+    .embedded-json-preview .json-tree {
+      min-width: max-content;
+    }
+
     .md-preview {
       max-width: min(860px, calc(100% - 20px));
       margin: 6px 0 10px var(--md-indent, 24px);
@@ -1971,15 +2006,33 @@ ${v=n?v:G(v,",")}
         if (options.comma) {
           appendToken(line, "json-punctuation", ",");
         }
-        if (typeof value === "string" && looksLikeMarkdown(value)) {
+
+        if (typeof value === "string") {
+          const embeddedJson = parseEmbeddedJsonString(value);
+          const markdown = looksLikeMarkdown(value);
+          if (!embeddedJson && !markdown) {
+            return line;
+          }
+
           const wrapper = document.createElement("div");
           wrapper.className = "json-value-node";
-          const preview = createMarkdownPreview(value, options.depth);
-          appendLineNode(line, createMarkdownToggle(preview));
           wrapper.appendChild(line);
-          wrapper.appendChild(preview);
+
+          if (embeddedJson) {
+            const preview = createEmbeddedJsonPreview(embeddedJson, options.depth);
+            appendLineNode(line, createEmbeddedJsonToggle(preview, embeddedJson.repaired));
+            wrapper.appendChild(preview);
+          }
+
+          if (markdown) {
+            const preview = createMarkdownPreview(value, options.depth);
+            appendLineNode(line, createMarkdownToggle(preview));
+            wrapper.appendChild(preview);
+          }
+
           return wrapper;
         }
+
         return line;
       }
 
@@ -2043,6 +2096,35 @@ ${v=n?v:G(v,",")}
         (content || line).appendChild(node);
       }
 
+      function parseEmbeddedJsonString(value) {
+        if (!looksLikeEmbeddedJson(value)) {
+          return null;
+        }
+
+        const trimmed = value.trim();
+        const result = parseContent(trimmed);
+        if (!result.ok || !result.value || typeof result.value !== "object") {
+          return null;
+        }
+        return result;
+      }
+
+      function looksLikeEmbeddedJson(value) {
+        if (!value || value.length < 2) {
+          return false;
+        }
+
+        const trimmed = value.trim();
+        const first = trimmed.charAt(0);
+        if (first === "{") {
+          return trimmed.includes(":");
+        }
+        if (first === "[") {
+          return trimmed.length > 1;
+        }
+        return false;
+      }
+
       function looksLikeMarkdown(value) {
         if (!value || value.length < 6) {
           return false;
@@ -2072,6 +2154,32 @@ ${v=n?v:G(v,",")}
           scheduleMinimapUpdate();
         });
         return button;
+      }
+
+      function createEmbeddedJsonToggle(preview, repaired) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "md-toggle embedded-json-toggle";
+        button.textContent = "JSON";
+        button.setAttribute("aria-expanded", "false");
+        button.setAttribute("title", repaired ? "\u5c55\u5f00\u5df2\u4fee\u590d\u7684\u5185\u5d4c JSON" : "\u5c55\u5f00\u5185\u5d4c JSON");
+        button.addEventListener("click", () => {
+          const expanded = preview.hidden;
+          preview.hidden = !expanded;
+          button.setAttribute("aria-expanded", String(expanded));
+          button.setAttribute("title", expanded ? "\u6536\u8d77\u5185\u5d4c JSON" : (repaired ? "\u5c55\u5f00\u5df2\u4fee\u590d\u7684\u5185\u5d4c JSON" : "\u5c55\u5f00\u5185\u5d4c JSON"));
+          scheduleMinimapUpdate();
+        });
+        return button;
+      }
+
+      function createEmbeddedJsonPreview(result, depth) {
+        const preview = document.createElement("div");
+        preview.className = "embedded-json-preview";
+        preview.hidden = true;
+        preview.style.setProperty("--embedded-json-indent", Math.max(24, depth * 16 + 22) + "px");
+        preview.appendChild(renderJsonTree(result.value));
+        return preview;
       }
 
       function createMarkdownPreview(value, depth) {
@@ -2796,6 +2904,26 @@ ${v=n?v:G(v,",")}
           };
         });
 
+        const embeddedJson = parseEmbeddedJsonString("{\"order_id\":\"A12345\",\"category\":\"product_defect\",\"urgency\":\"high\"}");
+        results.push({
+          name: "embedded json string",
+          passed: Boolean(embeddedJson && embeddedJson.ok && embeddedJson.value.order_id === "A12345"),
+          ok: Boolean(embeddedJson && embeddedJson.ok),
+          logs: embeddedJson ? embeddedJson.logs : [],
+          output: embeddedJson ? embeddedJson.output : "",
+          error: ""
+        });
+
+        const plainText = parseEmbeddedJsonString("hello {not json}");
+        results.push({
+          name: "plain string is not embedded json",
+          passed: plainText === null,
+          ok: plainText === null,
+          logs: [],
+          output: "",
+          error: ""
+        });
+
         return {
           passed: results.every((item) => item.passed),
           results
@@ -2820,6 +2948,7 @@ ${v=n?v:G(v,",")}
         buildDamagedJsonPreview,
         highlightJson,
         highlightLooseJsonPreview,
+        parseEmbeddedJsonString,
         parseContent,
         repairJsonLike,
         runSelfTests
